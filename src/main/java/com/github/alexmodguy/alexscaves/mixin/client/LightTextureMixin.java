@@ -83,7 +83,7 @@ public abstract class LightTextureMixin {
             if (Minecraft.getInstance().getCameraEntity() instanceof PossessesCamera || Minecraft.getInstance().getCameraEntity() instanceof LivingEntity afflicted && afflicted.hasEffect(ACEffectRegistry.DARKNESS_INCARNATE)) {
                 f = Math.max(f, 0.35F);
             }
-            if (Minecraft.getInstance().player.hasEffect(ACEffectRegistry.DEEPSIGHT) && Minecraft.getInstance().player.isUnderWater()) {
+            if (Minecraft.getInstance().player != null && Minecraft.getInstance().player.hasEffect(ACEffectRegistry.DEEPSIGHT) && Minecraft.getInstance().player.isUnderWater()) {
                 f = Math.min(1.0F, f + 0.05F * DeepsightEffect.getIntensity(Minecraft.getInstance().player, partialTicks));
             }
             float light = f + cir.getReturnValue();
@@ -120,6 +120,10 @@ public abstract class LightTextureMixin {
 
                     float f2 = this.minecraft.options.darknessEffectScale().get().floatValue();
                     float f3 = this.getDarknessGamma(partialTicks) * f2;
+                    if (this.minecraft.player == null) {
+                        this.minecraft.getProfiler().pop();
+                        return;
+                    }
                     float f4 = this.calculateDarknessScale(this.minecraft.player, f3, partialTicks) * f2;
                     float f6 = this.minecraft.player.getWaterVision();
                     float f5;

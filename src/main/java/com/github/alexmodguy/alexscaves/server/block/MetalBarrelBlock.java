@@ -29,7 +29,8 @@ public class MetalBarrelBlock extends BarrelBlock {
         super(BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(3.5F).sound(ACSoundTypes.SCRAP_METAL));
     }
 
-    public InteractionResult use(BlockState blockState, Level level, BlockPos blockPos, Player player, InteractionHand hand, BlockHitResult result) {
+    @Override
+    protected InteractionResult useWithoutItem(BlockState blockState, Level level, BlockPos blockPos, Player player, BlockHitResult result) {
         if (level.isClientSide) {
             return InteractionResult.SUCCESS;
         } else {

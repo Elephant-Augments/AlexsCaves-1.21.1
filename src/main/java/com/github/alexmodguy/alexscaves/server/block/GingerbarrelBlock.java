@@ -38,7 +38,8 @@ public class GingerbarrelBlock extends BarrelBlock {
         super(Properties.of().mapColor(MapColor.COLOR_BROWN).strength(1.5F).sound(ACSoundTypes.DENSE_CANDY).noOcclusion());
     }
 
-    public InteractionResult use(BlockState blockState, Level level, BlockPos blockPos, Player player, InteractionHand hand, BlockHitResult result) {
+    @Override
+    protected InteractionResult useWithoutItem(BlockState blockState, Level level, BlockPos blockPos, Player player, BlockHitResult result) {
         if (level.isClientSide) {
             return InteractionResult.SUCCESS;
         } else {

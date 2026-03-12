@@ -195,7 +195,6 @@ public abstract class LightTextureMixin {
                             vector3f1.lerp(new Vector3f(0.75F, 0.75F, 0.75F), 0.04F);
                             clampColor(vector3f1);
                             vector3f1.mul(255.0F);
-                            int j1 = 255;
                             int k = (int) vector3f1.x();
                             int l = (int) vector3f1.y();
                             int i1 = (int) vector3f1.z();

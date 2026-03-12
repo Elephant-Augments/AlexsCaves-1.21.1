@@ -18,7 +18,6 @@ import net.minecraft.world.inventory.tooltip.TooltipComponent;
 import net.minecraft.world.item.*;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.gameevent.GameEvent;
-import org.checkerframework.checker.units.qual.C;
 
 import java.util.Optional;
 
@@ -80,7 +79,6 @@ public class SackOfSatingItem extends Item {
 
     @Override
     public boolean overrideOtherStackedOnMe(ItemStack sackStack, ItemStack foodStack, Slot slot, ClickAction clickAction, Player player, SlotAccess slotAccess) {
-        CompoundTag tag = sackStack.getOrDefault(net.minecraft.core.component.DataComponents.CUSTOM_DATA, net.minecraft.world.item.component.CustomData.EMPTY).copyTag();
         if (clickAction != ClickAction.SECONDARY || foodStack.is(ACTagRegistry.RESTRICTED_FROM_SACK_OF_SATING)) {
             return false;
         } else {

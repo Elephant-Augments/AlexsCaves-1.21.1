@@ -14,6 +14,7 @@ import net.minecraft.world.phys.Vec3;
 import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class ACBiomeRarity {
     private static long lastTestedSeed = 0;
@@ -27,6 +28,12 @@ public class ACBiomeRarity {
     private static volatile boolean initialized = false;
     
     private static final double BIOME_BOUNDARY_EXTENSION = 1.0D;
+
+    // Cache voronoi results to avoid redundant synchronized computations.
+    // Key: seed ^ (x * 73856093L) ^ (z * 19349669L), Value: VoronoiInfo or EMPTY_SENTINEL
+    private static final int MAX_CACHE_SIZE = 4096;
+    private static final ConcurrentHashMap<Long, Object> voronoiCache = new ConcurrentHashMap<>();
+    private static final Object EMPTY_SENTINEL = new Object();
 
     public static void init() {
         VORONOI_GENERATOR.setOffsetAmount(AlexsCaves.COMMON_CONFIG.caveBiomeSpacingRandomness.get());
@@ -52,7 +59,14 @@ public class ACBiomeRarity {
         if (seperationDistance <= 0) {
             return null;
         }
+
+        long cacheKey = worldSeed ^ (x * 73856093L) ^ (z * 19349669L);
+        Object cached = voronoiCache.get(cacheKey);
+        if (cached != null) {
+            return cached == EMPTY_SENTINEL ? null : (VoronoiGenerator.VoronoiInfo) cached;
+        }
         
+        VoronoiGenerator.VoronoiInfo result;
         synchronized (VORONOI_GENERATOR) {
             VORONOI_GENERATOR.setSeed(worldSeed);
             double sampleX = x / seperationDistance;
@@ -61,11 +75,17 @@ public class ACBiomeRarity {
             double positionOffsetZ = AlexsCaves.COMMON_CONFIG.caveBiomeWidthRandomness.get() * NOISE_Z.getValue(sampleX, sampleZ, false);
             VoronoiGenerator.VoronoiInfo info = VORONOI_GENERATOR.get2(sampleX + positionOffsetX, sampleZ + positionOffsetZ);
             if (info.distance() < (biomeSize / seperationDistance) * BIOME_BOUNDARY_EXTENSION) {
-                return info;
+                result = info;
             } else {
-                return null;
+                result = null;
             }
         }
+
+        if (voronoiCache.size() >= MAX_CACHE_SIZE) {
+            voronoiCache.clear();
+        }
+        voronoiCache.put(cacheKey, result != null ? result : EMPTY_SENTINEL);
+        return result;
     }
 
     @Nullable

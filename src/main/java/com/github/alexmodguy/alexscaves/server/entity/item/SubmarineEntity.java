@@ -1,13 +1,11 @@
 package com.github.alexmodguy.alexscaves.server.entity.item;
 
 import com.github.alexmodguy.alexscaves.AlexsCaves;
-import com.github.alexmodguy.alexscaves.server.block.ACBlockRegistry;
 import com.github.alexmodguy.alexscaves.server.entity.ACEntityRegistry;
 import com.github.alexmodguy.alexscaves.server.entity.util.KeybindUsingMount;
 import com.github.alexmodguy.alexscaves.server.message.MountedEntityKeyMessage;
 import com.github.alexmodguy.alexscaves.server.misc.ACMath;
 import com.github.alexmodguy.alexscaves.server.misc.ACSoundRegistry;
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
@@ -72,15 +70,6 @@ public class SubmarineEntity extends Entity implements KeybindUsingMount {
     private float sonarFlashAmount;
     private int creakTime;
     private boolean wereLightsOn;
-    private BlockPos lastFloodlightPos = null;
-    private float prevRenderYaw;
-    private float renderYaw;
-    private float prevRenderPitch;
-    private float renderPitch;
-    private boolean renderRotationInitialized;
-    private Vec3 prevRenderOffset = Vec3.ZERO;
-    private Vec3 renderOffset = Vec3.ZERO;
-    private boolean renderOffsetInitialized;
 
     public SubmarineEntity(EntityType<?> entityType, Level level) {
         super(entityType, level);
@@ -165,14 +154,12 @@ public class SubmarineEntity extends Entity implements KeybindUsingMount {
                 double d5 = this.getX() + (this.lx - this.getX()) / (double) this.lSteps;
                 double d6 = this.getY() + (this.ly - this.getY()) / (double) this.lSteps;
                 double d7 = this.getZ() + (this.lz - this.getZ()) / (double) this.lSteps;
-                this.setYRot(this.getYRot() + Mth.wrapDegrees((float) this.lyr - this.getYRot()) / (float) this.lSteps);
+                this.setYRot(Mth.wrapDegrees((float) this.lyr));
                 this.setXRot(this.getXRot() + (float) (this.lxr - (double) this.getXRot()) / (float) this.lSteps);
                 --this.lSteps;
                 this.setPos(d5, d6, d7);
             } else {
-                if (!this.isControlledByLocalInstance()) {
-                    this.reapplyPosition();
-                }
+                this.reapplyPosition();
             }
             Player player = AlexsCaves.PROXY.getClientSidePlayer();
             if (player != null && player.isPassengerOfSameVehicle(this)) {
@@ -222,7 +209,6 @@ public class SubmarineEntity extends Entity implements KeybindUsingMount {
             if(this.getDangerAlertTicks() > 0){
                 this.setDangerAlertTicks(this.getDangerAlertTicks() - 1);
             }
-            updateFloodlightBlocks();
         }
         float xRotSet = Mth.clamp(-(float) this.getDeltaMovement().y * 2F, -1.0F, 1.0F) * -(float) (180F / (float) Math.PI) * (float) Math.signum(getAcceleration() + 0.01);
         float rot = acceleration * 30 + Math.signum(acceleration) * 15;
@@ -264,15 +250,6 @@ public class SubmarineEntity extends Entity implements KeybindUsingMount {
             wereLightsOn = this.areLightsOn();
         }
         this.setXRot(ACMath.approachRotation(this.getXRot(), Mth.clamp(getDamageLevel() >= 4 ? 0 : xRotSet, -50, 50), 2));
-        if (this.level().isClientSide) {
-            updateRenderRotations();
-            Player player = AlexsCaves.PROXY.getClientSidePlayer();
-            if (player != null && player.isPassengerOfSameVehicle(this)) {
-                updateRenderOffset(player);
-            } else {
-                renderOffsetInitialized = false;
-            }
-        }
         prevLeftPropellerRot = leftPropellerRot;
         prevRightPropellerRot = rightPropellerRot;
         prevBackPropellerRot = backPropellerRot;
@@ -280,7 +257,6 @@ public class SubmarineEntity extends Entity implements KeybindUsingMount {
     }
 
     public void remove(Entity.RemovalReason removalReason) {
-        removeFloodlightBlock();
         AlexsCaves.PROXY.clearSoundCacheFor(this);
         super.remove(removalReason);
     }
@@ -304,60 +280,6 @@ public class SubmarineEntity extends Entity implements KeybindUsingMount {
         this.setDeltaMovement(this.lxd, this.lyd, this.lzd);
     }
 
-    private void updateRenderRotations() {
-        float targetYaw = this.getYRot();
-        float targetPitch = this.getXRot();
-        if (this.isControlledByLocalInstance()) {
-            Player player = AlexsCaves.PROXY.getClientSidePlayer();
-            if (player != null && player.isPassengerOfSameVehicle(this)) {
-                targetYaw = player.getYHeadRot();
-                targetPitch = player.getViewXRot(1.0F);
-            }
-        }
-        if (!renderRotationInitialized) {
-            renderRotationInitialized = true;
-            prevRenderYaw = targetYaw;
-            renderYaw = targetYaw;
-            prevRenderPitch = targetPitch;
-            renderPitch = targetPitch;
-            return;
-        }
-        prevRenderYaw = renderYaw;
-        prevRenderPitch = renderPitch;
-        float maxYawStep = this.isControlledByLocalInstance() ? 8.0F : 20.0F;
-        float maxPitchStep = this.isControlledByLocalInstance() ? 6.0F : 15.0F;
-        renderYaw = ACMath.approachRotation(renderYaw, targetYaw, maxYawStep);
-        renderPitch = Mth.approach(renderPitch, targetPitch, maxPitchStep);
-    }
-
-    public float getRenderYaw(float partialTicks) {
-        return Mth.rotLerp(partialTicks, prevRenderYaw, renderYaw);
-    }
-
-    public float getRenderPitch(float partialTicks) {
-        return Mth.lerp(partialTicks, prevRenderPitch, renderPitch);
-    }
-
-    private void updateRenderOffset(Player player) {
-        Vec3 targetOffset = this.getPosition(1.0F).subtract(player.getEyePosition(1.0F));
-        if (!renderOffsetInitialized) {
-            renderOffsetInitialized = true;
-            prevRenderOffset = targetOffset;
-            renderOffset = targetOffset;
-            return;
-        }
-        prevRenderOffset = renderOffset;
-        double lerp = this.isControlledByLocalInstance() ? 0.35D : 0.6D;
-        renderOffset = renderOffset.add(targetOffset.subtract(renderOffset).scale(lerp));
-    }
-
-    public Vec3 getRenderOffset(float partialTicks) {
-        double x = Mth.lerp(partialTicks, prevRenderOffset.x, renderOffset.x);
-        double y = Mth.lerp(partialTicks, prevRenderOffset.y, renderOffset.y);
-        double z = Mth.lerp(partialTicks, prevRenderOffset.z, renderOffset.z);
-        return new Vec3(x, y, z);
-    }
-
     @Override
     public void lerpMotion(double lerpX, double lerpY, double lerpZ) {
         this.lxd = lerpX;
@@ -372,37 +294,6 @@ public class SubmarineEntity extends Entity implements KeybindUsingMount {
 
     public void setLightsOn(boolean bool) {
         this.entityData.set(LIGHTS, bool);
-        if (!bool && !this.level().isClientSide) {
-            removeFloodlightBlock();
-        }
-    }
-
-    private void updateFloodlightBlocks() {
-        if (this.areLightsOn() && this.isVehicle() && this.isInWaterOrBubble() && tickCount % 4 == 0) {
-            Vec3 forward = new Vec3(0, 0, 5).xRot(-this.getXRot() * ((float) Math.PI / 180F)).yRot(-this.getYRot() * ((float) Math.PI / 180F));
-            BlockPos lightPos = BlockPos.containing(this.getX() + forward.x, this.getY() + 0.5 + forward.y, this.getZ() + forward.z);
-            if (!lightPos.equals(lastFloodlightPos)) {
-                removeFloodlightBlock();
-                net.minecraft.world.level.block.state.BlockState stateAt = this.level().getBlockState(lightPos);
-                if (stateAt.isAir() || stateAt.is(net.minecraft.world.level.block.Blocks.WATER) || stateAt.is(net.minecraft.world.level.block.Blocks.CAVE_AIR)) {
-                    boolean waterlogged = stateAt.getFluidState().is(net.minecraft.tags.FluidTags.WATER);
-                    this.level().setBlock(lightPos, ACBlockRegistry.AMBERSOL_LIGHT.get().defaultBlockState().setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.WATERLOGGED, waterlogged), 3);
-                    lastFloodlightPos = lightPos;
-                }
-            }
-        } else if ((!this.areLightsOn() || !this.isVehicle()) && lastFloodlightPos != null) {
-            removeFloodlightBlock();
-        }
-    }
-
-    private void removeFloodlightBlock() {
-        if (lastFloodlightPos != null && !this.level().isClientSide) {
-            if (this.level().getBlockState(lastFloodlightPos).is(ACBlockRegistry.AMBERSOL_LIGHT.get())) {
-                net.minecraft.world.level.block.state.BlockState fluidRestore = this.level().getFluidState(lastFloodlightPos).is(net.minecraft.tags.FluidTags.WATER) ? net.minecraft.world.level.block.Blocks.WATER.defaultBlockState() : net.minecraft.world.level.block.Blocks.AIR.defaultBlockState();
-                this.level().setBlock(lastFloodlightPos, fluidRestore, 3);
-            }
-            lastFloodlightPos = null;
-        }
     }
 
     public boolean isWaxed() {
@@ -459,19 +350,13 @@ public class SubmarineEntity extends Entity implements KeybindUsingMount {
             if (passenger instanceof Player) {
                 tickController((Player) passenger);
             }
-            float seatPitch = this.getXRot();
             float seatYaw = this.getYRot();
-            if (this.level().isClientSide && passenger == AlexsCaves.PROXY.getClientSidePlayer() && renderRotationInitialized) {
-                seatPitch = getRenderPitch(1.0F);
-                seatYaw = getRenderYaw(1.0F);
-            }
+            float seatPitch = this.getXRot();
             float f1 = -(seatPitch / 40F);
-            // Position player in the cockpit - matching original 1.20 values
             Vec3 seatOffset = new Vec3(0F, -0.2F, 0.8F + f1)
                     .xRot((float) Math.toRadians(seatPitch))
                     .yRot((float) Math.toRadians(-seatYaw));
-            // In 1.21, getMyRidingOffset is deprecated/changed, use a fixed offset that matches player riding offset
-            double passengerRidingOffset = -0.6D; // Standard player riding offset
+            double passengerRidingOffset = -0.6D;
             double d0 = this.getY() + this.getBbHeight() * 0.5F + seatOffset.y + passengerRidingOffset;
             moveFunction.accept(passenger, this.getX() + seatOffset.x, d0, this.getZ() + seatOffset.z);
             living.setAirSupply(Math.min(living.getAirSupply() + 2, living.getMaxAirSupply()));

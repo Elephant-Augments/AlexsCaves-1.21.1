@@ -67,8 +67,8 @@ public class SubmarineRenderer extends EntityRenderer<SubmarineEntity> {
     public static void renderSubmarine(SubmarineEntity entity, float partialTicks, PoseStack poseStack, MultiBufferSource source, int lightIn, boolean maskWater) {
         Player player = Minecraft.getInstance().player;
         float ageInTicks = entity.tickCount + partialTicks;
-    float submarineYaw = entity.getRenderYaw(partialTicks);
-    float submarinePitch = entity.getRenderPitch(partialTicks);
+    float submarineYaw = entity.getViewYRot(partialTicks);
+    float submarinePitch = entity.getViewXRot(partialTicks);
         poseStack.pushPose();
         poseStack.translate(0.0D, 1.5D, 0.0D);
         poseStack.mulPose(Axis.YP.rotationDegrees(180 - submarineYaw));

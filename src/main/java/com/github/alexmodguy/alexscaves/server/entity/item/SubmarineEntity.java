@@ -1,11 +1,13 @@
 package com.github.alexmodguy.alexscaves.server.entity.item;
 
 import com.github.alexmodguy.alexscaves.AlexsCaves;
+import com.github.alexmodguy.alexscaves.server.block.ACBlockRegistry;
 import com.github.alexmodguy.alexscaves.server.entity.ACEntityRegistry;
 import com.github.alexmodguy.alexscaves.server.entity.util.KeybindUsingMount;
 import com.github.alexmodguy.alexscaves.server.message.MountedEntityKeyMessage;
 import com.github.alexmodguy.alexscaves.server.misc.ACMath;
 import com.github.alexmodguy.alexscaves.server.misc.ACSoundRegistry;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
@@ -70,6 +72,7 @@ public class SubmarineEntity extends Entity implements KeybindUsingMount {
     private float sonarFlashAmount;
     private int creakTime;
     private boolean wereLightsOn;
+    private BlockPos lastFloodlightPos = null;
     private float prevRenderYaw;
     private float renderYaw;
     private float prevRenderPitch;
@@ -162,12 +165,14 @@ public class SubmarineEntity extends Entity implements KeybindUsingMount {
                 double d5 = this.getX() + (this.lx - this.getX()) / (double) this.lSteps;
                 double d6 = this.getY() + (this.ly - this.getY()) / (double) this.lSteps;
                 double d7 = this.getZ() + (this.lz - this.getZ()) / (double) this.lSteps;
-                this.setYRot(Mth.wrapDegrees((float) this.lyr));
+                this.setYRot(this.getYRot() + Mth.wrapDegrees((float) this.lyr - this.getYRot()) / (float) this.lSteps);
                 this.setXRot(this.getXRot() + (float) (this.lxr - (double) this.getXRot()) / (float) this.lSteps);
                 --this.lSteps;
                 this.setPos(d5, d6, d7);
             } else {
-                this.reapplyPosition();
+                if (!this.isControlledByLocalInstance()) {
+                    this.reapplyPosition();
+                }
             }
             Player player = AlexsCaves.PROXY.getClientSidePlayer();
             if (player != null && player.isPassengerOfSameVehicle(this)) {
@@ -217,6 +222,7 @@ public class SubmarineEntity extends Entity implements KeybindUsingMount {
             if(this.getDangerAlertTicks() > 0){
                 this.setDangerAlertTicks(this.getDangerAlertTicks() - 1);
             }
+            updateFloodlightBlocks();
         }
         float xRotSet = Mth.clamp(-(float) this.getDeltaMovement().y * 2F, -1.0F, 1.0F) * -(float) (180F / (float) Math.PI) * (float) Math.signum(getAcceleration() + 0.01);
         float rot = acceleration * 30 + Math.signum(acceleration) * 15;
@@ -274,6 +280,7 @@ public class SubmarineEntity extends Entity implements KeybindUsingMount {
     }
 
     public void remove(Entity.RemovalReason removalReason) {
+        removeFloodlightBlock();
         AlexsCaves.PROXY.clearSoundCacheFor(this);
         super.remove(removalReason);
     }
@@ -365,6 +372,37 @@ public class SubmarineEntity extends Entity implements KeybindUsingMount {
 
     public void setLightsOn(boolean bool) {
         this.entityData.set(LIGHTS, bool);
+        if (!bool && !this.level().isClientSide) {
+            removeFloodlightBlock();
+        }
+    }
+
+    private void updateFloodlightBlocks() {
+        if (this.areLightsOn() && this.isVehicle() && this.isInWaterOrBubble() && tickCount % 4 == 0) {
+            Vec3 forward = new Vec3(0, 0, 5).xRot(-this.getXRot() * ((float) Math.PI / 180F)).yRot(-this.getYRot() * ((float) Math.PI / 180F));
+            BlockPos lightPos = BlockPos.containing(this.getX() + forward.x, this.getY() + 0.5 + forward.y, this.getZ() + forward.z);
+            if (!lightPos.equals(lastFloodlightPos)) {
+                removeFloodlightBlock();
+                net.minecraft.world.level.block.state.BlockState stateAt = this.level().getBlockState(lightPos);
+                if (stateAt.isAir() || stateAt.is(net.minecraft.world.level.block.Blocks.WATER) || stateAt.is(net.minecraft.world.level.block.Blocks.CAVE_AIR)) {
+                    boolean waterlogged = stateAt.getFluidState().is(net.minecraft.tags.FluidTags.WATER);
+                    this.level().setBlock(lightPos, ACBlockRegistry.AMBERSOL_LIGHT.get().defaultBlockState().setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.WATERLOGGED, waterlogged), 3);
+                    lastFloodlightPos = lightPos;
+                }
+            }
+        } else if ((!this.areLightsOn() || !this.isVehicle()) && lastFloodlightPos != null) {
+            removeFloodlightBlock();
+        }
+    }
+
+    private void removeFloodlightBlock() {
+        if (lastFloodlightPos != null && !this.level().isClientSide) {
+            if (this.level().getBlockState(lastFloodlightPos).is(ACBlockRegistry.AMBERSOL_LIGHT.get())) {
+                net.minecraft.world.level.block.state.BlockState fluidRestore = this.level().getFluidState(lastFloodlightPos).is(net.minecraft.tags.FluidTags.WATER) ? net.minecraft.world.level.block.Blocks.WATER.defaultBlockState() : net.minecraft.world.level.block.Blocks.AIR.defaultBlockState();
+                this.level().setBlock(lastFloodlightPos, fluidRestore, 3);
+            }
+            lastFloodlightPos = null;
+        }
     }
 
     public boolean isWaxed() {

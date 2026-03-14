@@ -123,8 +123,9 @@ public class SubmarineEntity extends Entity implements KeybindUsingMount {
         if (this.tickCount % 200 == 0 && damageSustained > 0) {
             damageSustained--;
         }
+        this.setYRot(Mth.wrapDegrees(this.getYRot()));
         this.xRotO = this.getXRot();
-        this.yRotO = Mth.wrapDegrees(this.getYRot());
+        this.yRotO = this.getYRot();
         this.prevSonarFlashAmount = sonarFlashAmount;
         if(this.getDangerAlertTicks() > 0 && sonarFlashAmount < 1.0F){
             sonarFlashAmount += 0.25F;
@@ -270,7 +271,9 @@ public class SubmarineEntity extends Entity implements KeybindUsingMount {
         this.lx = x;
         this.ly = y;
         this.lz = z;
-        this.lyr = yr;
+        // Wrap the target yaw relative to current yaw to prevent spinning
+        // the long way around (e.g. 350° -> 10° should go +20, not -340)
+        this.lyr = this.getYRot() + Mth.wrapDegrees(yr - this.getYRot());
         this.lxr = xr;
         this.lSteps = steps;
         this.setDeltaMovement(this.lxd, this.lyd, this.lzd);
@@ -343,7 +346,7 @@ public class SubmarineEntity extends Entity implements KeybindUsingMount {
     public void positionRider(Entity passenger, MoveFunction moveFunction) {
         if (this.isPassengerOfSameVehicle(passenger) && passenger instanceof LivingEntity living && !this.touchingUnloadedChunk()) {
             clampRotation(living);
-            if (passenger instanceof Player) {
+            if (!this.level().isClientSide && passenger instanceof Player) {
                 tickController((Player) passenger);
             }
             float seatYaw = this.getYRot();
@@ -406,7 +409,7 @@ public class SubmarineEntity extends Entity implements KeybindUsingMount {
             } else {
                 turnRightTicks = 5;
             }
-            this.setYRot(this.getYRot() + turn * 2.5f);
+            this.setYRot(Mth.wrapDegrees(this.getYRot() + turn * 2.5f));
         }
         if (passenger.zza != 0) {
             float back = -Math.signum(passenger.zza);

@@ -273,6 +273,7 @@ public abstract class LevelRendererMixin {
             poseStack.pushPose();
             poseStack.translate(subX, subY, subZ);
             SubmarineRenderer.renderSubFirstPerson(submarine, partialTicks, poseStack, minecraft.renderBuffers().bufferSource());
+            minecraft.renderBuffers().bufferSource().endBatch();
             poseStack.popPose();
         }
         

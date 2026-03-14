@@ -12,9 +12,9 @@ import net.minecraft.world.level.levelgen.synth.PerlinSimplexNoise;
 import net.minecraft.world.phys.Vec3;
 
 import javax.annotation.Nullable;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class ACBiomeRarity {
     private static long lastTestedSeed = 0;
@@ -29,11 +29,12 @@ public class ACBiomeRarity {
     
     private static final double BIOME_BOUNDARY_EXTENSION = 1.0D;
 
-    // Cache voronoi results to avoid redundant synchronized computations.
-    // Key: seed ^ (x * 73856093L) ^ (z * 19349669L), Value: VoronoiInfo or EMPTY_SENTINEL
-    private static final int MAX_CACHE_SIZE = 4096;
-    private static final ConcurrentHashMap<Long, Object> voronoiCache = new ConcurrentHashMap<>();
+    // Per-thread cache to avoid contention. Each world gen thread works on nearby chunks,
+    // so a thread-local cache has great spatial coherence.
+    private static final int MAX_THREAD_CACHE_SIZE = 8192;
     private static final Object EMPTY_SENTINEL = new Object();
+    private static final ThreadLocal<HashMap<Long, Object>> threadLocalCache =
+            ThreadLocal.withInitial(() -> new HashMap<>(1024));
 
     public static void init() {
         VORONOI_GENERATOR.setOffsetAmount(AlexsCaves.COMMON_CONFIG.caveBiomeSpacingRandomness.get());
@@ -61,30 +62,29 @@ public class ACBiomeRarity {
         }
 
         long cacheKey = worldSeed ^ (x * 73856093L) ^ (z * 19349669L);
-        Object cached = voronoiCache.get(cacheKey);
+        HashMap<Long, Object> cache = threadLocalCache.get();
+        Object cached = cache.get(cacheKey);
         if (cached != null) {
             return cached == EMPTY_SENTINEL ? null : (VoronoiGenerator.VoronoiInfo) cached;
         }
         
+        double sampleX = x / seperationDistance;
+        double sampleZ = z / seperationDistance;
+        double positionOffsetX = AlexsCaves.COMMON_CONFIG.caveBiomeWidthRandomness.get() * NOISE_X.getValue(sampleX, sampleZ, false);
+        double positionOffsetZ = AlexsCaves.COMMON_CONFIG.caveBiomeWidthRandomness.get() * NOISE_Z.getValue(sampleX, sampleZ, false);
+        VoronoiGenerator.VoronoiInfo info = VORONOI_GENERATOR.get2(sampleX + positionOffsetX, sampleZ + positionOffsetZ, worldSeed);
+        
         VoronoiGenerator.VoronoiInfo result;
-        synchronized (VORONOI_GENERATOR) {
-            VORONOI_GENERATOR.setSeed(worldSeed);
-            double sampleX = x / seperationDistance;
-            double sampleZ = z / seperationDistance;
-            double positionOffsetX = AlexsCaves.COMMON_CONFIG.caveBiomeWidthRandomness.get() * NOISE_X.getValue(sampleX, sampleZ, false);
-            double positionOffsetZ = AlexsCaves.COMMON_CONFIG.caveBiomeWidthRandomness.get() * NOISE_Z.getValue(sampleX, sampleZ, false);
-            VoronoiGenerator.VoronoiInfo info = VORONOI_GENERATOR.get2(sampleX + positionOffsetX, sampleZ + positionOffsetZ);
-            if (info.distance() < (biomeSize / seperationDistance) * BIOME_BOUNDARY_EXTENSION) {
-                result = info;
-            } else {
-                result = null;
-            }
+        if (info.distance() < (biomeSize / seperationDistance) * BIOME_BOUNDARY_EXTENSION) {
+            result = info;
+        } else {
+            result = null;
         }
 
-        if (voronoiCache.size() >= MAX_CACHE_SIZE) {
-            voronoiCache.clear();
+        if (cache.size() >= MAX_THREAD_CACHE_SIZE) {
+            cache.clear();
         }
-        voronoiCache.put(cacheKey, result != null ? result : EMPTY_SENTINEL);
+        cache.put(cacheKey, result != null ? result : EMPTY_SENTINEL);
         return result;
     }
 
@@ -96,7 +96,7 @@ public class ACBiomeRarity {
     @Nullable
     public static int getRareBiomeOffsetId(VoronoiGenerator.VoronoiInfo voronoiInfo) {
         double normalized = (voronoiInfo.hash() + 1D) * 0.5D; // 0.0 to 1.0
-        int biomeCount = BiomeGenerationConfig.getBiomeCount();
+        int biomeCount = BiomeGenerationConfig.getBiomeCountFast();
         int offset = (int) (normalized * biomeCount);
         return Math.min(offset, biomeCount - 1);
     }
@@ -127,16 +127,14 @@ public class ACBiomeRarity {
         int centerBlockX = (int) biomeCenter.x * 4;
         int centerBlockZ = (int) biomeCenter.z * 4;
         
-        synchronized (BiomeGenerationConfig.BIOMES_LOCK) {
-            for (Map.Entry<ResourceKey<Biome>, BiomeGenerationNoiseCondition> entry : BiomeGenerationConfig.BIOMES.entrySet()) {
-                if (entry.getValue().getRarityOffset() == rarityOffset) {
-                    // Check if biome center is far enough from spawn
-                    int distFromSpawn = entry.getValue().getDistanceFromSpawn();
-                    if (centerBlockX * centerBlockX + centerBlockZ * centerBlockZ < distFromSpawn * distFromSpawn) {
-                        return null; // Too close to spawn
-                    }
-                    return entry.getKey();
+        for (Map.Entry<ResourceKey<Biome>, BiomeGenerationNoiseCondition> entry : BiomeGenerationConfig.getBiomesSnapshot().entrySet()) {
+            if (entry.getValue().getRarityOffset() == rarityOffset) {
+                // Check if biome center is far enough from spawn
+                int distFromSpawn = entry.getValue().getDistanceFromSpawn();
+                if (centerBlockX * centerBlockX + centerBlockZ * centerBlockZ < distFromSpawn * distFromSpawn) {
+                    return null; // Too close to spawn
                 }
+                return entry.getKey();
             }
         }
         

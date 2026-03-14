@@ -120,13 +120,6 @@ public class SubmarineEntity extends Entity implements KeybindUsingMount {
         float leftPropellerRot = getLeftPropellerRot();
         float rightPropellerRot = getRightPropellerRot();
         float backPropellerRot = getBackPropellerRot();
-        if (controlDownTicks > 0 || this.getDamageLevel() >= 4 && !this.onGround()) {
-            this.setDeltaMovement(this.getDeltaMovement().add(0, -0.08, 0));
-            controlDownTicks--;
-        } else if (controlUpTicks > 0 && getWaterHeight() > 1.5F) {
-            this.setDeltaMovement(this.getDeltaMovement().add(0, 0.08, 0));
-            controlUpTicks--;
-        }
         if (this.tickCount % 200 == 0 && damageSustained > 0) {
             damageSustained--;
         }
@@ -148,16 +141,18 @@ public class SubmarineEntity extends Entity implements KeybindUsingMount {
                 this.playSound(ACSoundRegistry.SUBMARINE_CREAK.get());
             }
         }
+        if (controlDownTicks > 0 || this.getDamageLevel() >= 4 && !this.onGround()) {
+            this.setDeltaMovement(this.getDeltaMovement().add(0, -0.08, 0));
+            controlDownTicks--;
+        } else if (controlUpTicks > 0 && getWaterHeight() > 1.5F) {
+            this.setDeltaMovement(this.getDeltaMovement().add(0, 0.08, 0));
+            controlUpTicks--;
+        }
         float acceleration = this.getAcceleration();
         if (this.level().isClientSide) {
             if (this.lSteps > 0) {
-                double d5 = this.getX() + (this.lx - this.getX()) / (double) this.lSteps;
-                double d6 = this.getY() + (this.ly - this.getY()) / (double) this.lSteps;
-                double d7 = this.getZ() + (this.lz - this.getZ()) / (double) this.lSteps;
-                this.setYRot(Mth.wrapDegrees((float) this.lyr));
-                this.setXRot(this.getXRot() + (float) (this.lxr - (double) this.getXRot()) / (float) this.lSteps);
+                this.lerpPositionAndRotationStep(this.lSteps, this.lx, this.ly, this.lz, this.lyr, this.lxr);
                 --this.lSteps;
-                this.setPos(d5, d6, d7);
             } else {
                 this.reapplyPosition();
             }
@@ -270,7 +265,8 @@ public class SubmarineEntity extends Entity implements KeybindUsingMount {
         }
     }
 
-    public void lerpTo(double x, double y, double z, float yr, float xr, int steps, boolean b) {
+    @Override
+    public void lerpTo(double x, double y, double z, float yr, float xr, int steps) {
         this.lx = x;
         this.ly = y;
         this.lz = z;

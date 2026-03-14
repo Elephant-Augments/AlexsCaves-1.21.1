@@ -265,6 +265,7 @@ public abstract class LevelRendererMixin {
         // Render submarine first person view
         if (player != null && player.isPassenger() && player.getVehicle() instanceof SubmarineEntity submarine && SubmarineRenderer.isFirstPersonFloodlightsMode(submarine)) {
             PoseStack poseStack = new PoseStack();
+            poseStack.mulPose(frustumMatrix);
             Vec3 camPos = camera.getPosition();
             double subX = Mth.lerp(partialTicks, submarine.xOld, submarine.getX()) - camPos.x;
             double subY = Mth.lerp(partialTicks, submarine.yOld, submarine.getY()) - camPos.y;
